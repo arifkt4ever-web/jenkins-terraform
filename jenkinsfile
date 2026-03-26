@@ -1,0 +1,54 @@
+pipeline {
+    agent any
+
+    triggers {
+    githubPush()
+}
+
+    environment {
+        AWS_DEFAULT_REGION = 'ap-south-1'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                echo 'Checking out code...'
+                git branch: 'main', url: 'https://github.com/latheef-mvmc/jenkins-terraform.git'
+            }
+        }
+
+        stage('Terraform Init') {
+            steps {
+                echo 'Initializing Terraform...'
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-jenkins']
+                ]) {
+                    sh 'terraform init'
+                }
+            }
+        }
+
+        stage('Terraform Plan') {
+            steps {
+                echo 'Planning...'
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-jenkins']
+                ]) {
+                    sh 'terraform plan'
+                }
+            }
+        }
+
+        stage('Terraform Apply') {
+            steps {
+                echo 'Applying Terraform...'
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-jenkins']
+                ]) {
+                    sh 'terraform destroy -no-color  -auto-approve'
+                }
+            }
+        }
+    }
+}
+
