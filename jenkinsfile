@@ -25,7 +25,7 @@ pipeline {
             }
             steps {
                 echo "Skipping branch: ${env.BRANCH_NAME}"
-                error("Stopping pipeline")
+                error("Stopping pipeline for non-target branch")
             }
         }
 
@@ -35,12 +35,14 @@ pipeline {
             }
         }
 
+        // 🔹 Terraform Init
         stage('Terraform Init') {
             steps {
                 sh 'terraform init'
             }
         }
 
+        // 🔹 Workspace Selection
         stage('Select Workspace') {
             steps {
                 script {
@@ -53,13 +55,14 @@ pipeline {
             }
         }
 
+        // 🔹 Validate
         stage('Terraform Validate') {
             steps {
                 sh 'terraform validate'
             }
         }
 
-        // 🔥 CREATE PLAN
+        // 🔹 Plan
         stage('Terraform Plan') {
             steps {
                 sh """
@@ -68,7 +71,7 @@ pipeline {
             }
         }
 
-        // 🔥 UPLOAD PLAN TO NEXUS
+        // 🔥 Upload tfplan to Nexus
         stage('Upload tfplan to Nexus') {
             steps {
                 withCredentials([usernamePassword(
@@ -77,9 +80,12 @@ pipeline {
                     passwordVariable: 'NEXUS_PASS'
                 )]) {
                     sh """
-                    echo "Uploading tfplan to Nexus"
+                    echo "Uploading tfplan to Nexus..."
 
-                    curl -u $NEXUS_USER:$NEXUS_PASS \
+                    # Debug - check file exists
+                    ls -l tfplan
+
+                    curl -v -u $NEXUS_USER:$NEXUS_PASS \
                     --upload-file tfplan \
                     ${NEXUS_URL}/tfplan-${env.BRANCH_NAME}-${env.BUILD_NUMBER}
                     """
@@ -87,7 +93,7 @@ pipeline {
             }
         }
 
-        // 🔴 Approval before PROD
+        // 🔴 Approval for PROD
         stage('Approval for PROD') {
             when {
                 branch 'prod'
@@ -97,8 +103,15 @@ pipeline {
             }
         }
 
-        // APPLY USING PLAN
+        // 🔹 Apply
         stage('Terraform Apply') {
+            when {
+                anyOf {
+                    branch 'dev'
+                    branch 'qa'
+                    branch 'prod'
+                }
+            }
             steps {
                 sh "terraform apply -auto-approve tfplan"
             }
@@ -107,10 +120,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ Terraform deployment + artifact upload successful"
+            echo "✅ Terraform + Nexus upload successful"
         }
         failure {
-            echo " Pipeline failed"
+            echo "❌ Pipeline failed"
         }
     }
 }
